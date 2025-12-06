@@ -126,6 +126,8 @@ while True:
         
         led.off()
         frame_count += 1
+
+        conn.send(b'A')  # Send ACK
         
     except Exception as e:
         lcd.clear()
