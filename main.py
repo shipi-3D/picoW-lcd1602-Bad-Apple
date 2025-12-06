@@ -1,8 +1,8 @@
-# this is the script for the pico
 from machine import Pin, I2C
 import time
 import network
 import socket
+import gc  # Add garbage collection
 from pico_i2c_lcd import I2cLcd
 
 led = Pin("LED", Pin.OUT)
@@ -16,7 +16,7 @@ LCD_I2C_NUM = 1
 LCD_SCL_PIN = 11
 LCD_SDA_PIN = 10
 LCD_I2C_FREQ = 100000
-LCD_ADDR = 0x27  # Common I2C address, change if needed
+LCD_ADDR = 0x27
 
 # Server configuration
 SERVER_PORT = 8888
@@ -66,12 +66,27 @@ lcd.clear()
 lcd.putstr("Connected!")
 time.sleep(1)
 
+# Force initial garbage collection
+gc.collect()
+print(f"Free memory at start: {gc.mem_free()} bytes")
+
 frame_count = 0
+
+# Pre-allocate buffers to avoid repeated allocation
+buf = bytearray(40)
+char_data = bytearray(8)
 
 while True:
     try:
-        # Read exactly 40 bytes over socket (8 chars × 5 bytes each)
-        buf = bytearray(40)
+        # Force garbage collection every 50 frames
+        if frame_count % 50 == 0:
+            gc.collect()
+            free_mem = gc.mem_free()
+            print(f"Frame {frame_count}, Free memory: {free_mem} bytes")
+            if free_mem < 10000:  # Warning if memory is low
+                print(f"WARNING: Low memory!")
+        
+        # Read exactly 40 bytes over socket
         pos = 0
         while pos < 40:
             chunk = conn.recv(40 - pos)
@@ -81,6 +96,7 @@ while True:
                 led.on()
                 while True:
                     time.sleep(1)
+            # Copy into pre-allocated buffer
             buf[pos:pos+len(chunk)] = chunk
             pos += len(chunk)
         
@@ -88,10 +104,9 @@ while True:
         
         # Convert each character from column format to row format
         for char_idx in range(8):
-            char_data = bytearray(8)
             offset = char_idx * 5
             
-            # Transpose: 5 bytes (columns) to 8 bytes (rows)
+            # Reuse char_data buffer instead of creating new one
             for row in range(8):
                 row_byte = 0
                 for col in range(5):
@@ -101,7 +116,7 @@ while True:
             
             lcd.custom_char(char_idx, bytes(char_data))
         
-        # Display 8 custom characters (4 per row)
+        # Display 8 custom characters
         lcd.move_to(0, 0)
         for i in range(4):
             lcd.putchar(chr(i))
@@ -115,6 +130,7 @@ while True:
     except Exception as e:
         lcd.clear()
         lcd.putstr(f"Error F{frame_count}\n{str(e)[:16]}")
+        print(f"Error at frame {frame_count}: {e}")
         led.on()
         while True:
             time.sleep(1)
