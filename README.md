@@ -52,7 +52,7 @@ SCL           -> GP11 (Pin 15)
 
 Run the encoder script to download and convert Bad Apple (or any video):
 ```bash
-python prepare_bad_apple.py
+python preparevideo.py
 ```
 
 This will:
